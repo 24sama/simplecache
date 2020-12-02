@@ -1,12 +1,12 @@
 package SimpleCache
 
 import (
+	"SimpleCache/consistenthash"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
-	"simplecache/consistenthash"
 	"strings"
 	"sync"
 )
@@ -63,6 +63,7 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	p.Log("Hit")
 	w.Header().Set("Content-Type", "application/octet-stream")
 	// 将缓存的值作为httpResponse返回
 	_, _ = w.Write(view.ByteSlice())
