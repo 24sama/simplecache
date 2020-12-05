@@ -1,6 +1,7 @@
 package SimpleCache
 
 import (
+	"SimpleCache/singlefilght"
 	"fmt"
 	"log"
 	"sync"
@@ -18,10 +19,11 @@ func (f GetterFunc) Get(key string) ([]byte, error) {
 }
 
 type Group struct {
-	name      string     // 每个Group拥有唯一的名称
-	getter    Getter     // 缓存未命中时获取源数据的回调
-	mainCache cache      // 并发缓存
-	peers     PeerPicker // 节点选择器
+	name      string              // 每个Group拥有唯一的名称
+	getter    Getter              // 缓存未命中时获取源数据的回调
+	mainCache cache               // 并发缓存
+	peers     PeerPicker          // 节点选择器
+	loader    *singlefilght.Group // 单次响应处理器
 }
 
 var (
@@ -39,6 +41,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		name:      name,
 		getter:    getter,
 		mainCache: cache{cacheBytes: cacheBytes},
+		loader:    &singlefilght.Group{},
 	}
 	groups[name] = g
 	return g
@@ -65,15 +68,22 @@ func (g *Group) Get(key string) (ByteView, error) {
 }
 
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil {
-		if peer, ok := g.peers.PickPeer(key); ok {
-			if value, err = g.getFromPeer(peer, key); err == nil {
-				return value, nil
+	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		if g.peers != nil {
+			if peer, ok := g.peers.PickPeer(key); ok {
+				if value, err = g.getFromPeer(peer, key); err == nil {
+					return value, nil
+				}
+				log.Println("[SimpleCache] Failed to get from peer", err)
 			}
-			log.Println("[SimpleCache] Failed to get from peer", err)
 		}
+		return g.getLocally(key)
+	})
+
+	if err == nil {
+		return viewi.(ByteView), nil
 	}
-	return g.getLocally(key)
+	return
 }
 
 // 调用用户回调函数g.getter.Get()获取源数据
